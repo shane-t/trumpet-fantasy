@@ -20,6 +20,8 @@ window.GameRenderingModules.renderGameplay = function (state) {
     const bgLuminance = bgRgb ? ((bgRgb.r * 0.2126) + (bgRgb.g * 0.7152) + (bgRgb.b * 0.0722)) : 0;
     const bulletMainColour = bgLuminance > 150 ? '#101010' : '#f8f8f8';
     const bulletAccentColour = bgLuminance > 150 ? '#000000' : '#ffff66';
+    const isPlayerDeath = state.phase === 'player_death';
+    const rainbowRingColours = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0099ff', '#7f00ff'];
 
     const bgGradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
     bgGradient.addColorStop(0, bgTopColour);
@@ -56,7 +58,39 @@ window.GameRenderingModules.renderGameplay = function (state) {
         ctx.fillRect(thing.pos_x, thing.pos_y, trailLength, 1);
     }
 
-    ctx.drawImage(this.render_cache.player_img, player.pos_x(), player.pos_y());
+    if (!isPlayerDeath || state.playerDeathFlashTimer > 0) {
+        ctx.drawImage(this.render_cache.player_img, player.pos_x(), player.pos_y());
+    }
+
+    if (isPlayerDeath && state.playerDeathFlashTimer > 0) {
+        const flashPulse = 0.45 + (Math.sin(state.frameCount * 1.2) * 0.35 + 0.35);
+        const flashAlpha = Math.max(0.2, Math.min(0.95, flashPulse));
+        const playerImage = this.render_cache.player_img;
+        const flashCanvas = this.render_cache.player_flash_canvas || document.createElement('canvas');
+        this.render_cache.player_flash_canvas = flashCanvas;
+
+        const spriteWidth = playerImage.width || player.width;
+        const spriteHeight = playerImage.height || player.height;
+
+        if (flashCanvas.width !== spriteWidth || flashCanvas.height !== spriteHeight) {
+            flashCanvas.width = spriteWidth;
+            flashCanvas.height = spriteHeight;
+        }
+
+        const flashCtx = flashCanvas.getContext('2d');
+        flashCtx.clearRect(0, 0, spriteWidth, spriteHeight);
+        flashCtx.globalCompositeOperation = 'source-over';
+        flashCtx.drawImage(playerImage, 0, 0, spriteWidth, spriteHeight);
+        flashCtx.globalCompositeOperation = 'source-atop';
+        flashCtx.fillStyle = '#ffffff';
+        flashCtx.fillRect(0, 0, spriteWidth, spriteHeight);
+        flashCtx.globalCompositeOperation = 'source-over';
+
+        ctx.save();
+        ctx.globalAlpha = flashAlpha;
+        ctx.drawImage(flashCanvas, player.pos_x(), player.pos_y());
+        ctx.restore();
+    }
 
     for (const missileId in state.entities.missiles) {
         const missile = state.entities.missiles[missileId];
@@ -114,7 +148,30 @@ window.GameRenderingModules.renderGameplay = function (state) {
     for (const powerupId in state.entities.powerups) {
         const powerup = state.entities.powerups[powerupId];
         if (!powerup) continue;
-        ctx.drawImage(this.render_cache.health_img, powerup.pos_x(), powerup.pos_y(), powerup.width, powerup.height);
+        if (powerup.type === 'rainbow') {
+            const centerX = powerup.pos_x() + powerup.width / 2;
+            const centerY = powerup.pos_y() + powerup.height / 2;
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(Math.PI);
+            ctx.drawImage(this.render_cache.health_img, -powerup.width / 2, -powerup.height / 2, powerup.width, powerup.height);
+            ctx.restore();
+        } else {
+            ctx.drawImage(this.render_cache.health_img, powerup.pos_x(), powerup.pos_y(), powerup.width, powerup.height);
+        }
+    }
+
+    for (const blastId in state.entities.rainbowBlasts) {
+        const blast = state.entities.rainbowBlasts[blastId];
+        if (!blast) continue;
+
+        for (let index = 0; index < rainbowRingColours.length; index++) {
+            ctx.strokeStyle = rainbowRingColours[index];
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(blast.x, blast.y, blast.radius + index, 0, Math.PI * 2);
+            ctx.stroke();
+        }
     }
 
     for (const missileId in state.entities.enemyMissiles) {
@@ -147,8 +204,36 @@ window.GameRenderingModules.renderGameplay = function (state) {
         ctx.fillRect(particle.pos_x(), particle.pos_y(), particle.width, particle.height);
     }
 
+    for (const particleId in state.entities.playerDeathParticles) {
+        const particle = state.entities.playerDeathParticles[particleId];
+        if (!particle) continue;
+        if (particle.life > 42) {
+            ctx.fillStyle = '#ffffff';
+        } else if (particle.life > 24) {
+            ctx.fillStyle = '#ffcc66';
+        } else {
+            ctx.fillStyle = '#ff5522';
+        }
+        ctx.fillRect(particle.pos_x(), particle.pos_y(), particle.width, particle.height);
+    }
+
     const lifeIconSize = 18;
     const lifeIconPad = 4;
+    const rainbowIconSize = 16;
+    const rainbowIconPad = 3;
+
+    for (let index = 0; index < state.rainbowBlastsAvailable; index++) {
+        const iconX = 8 + index * (rainbowIconSize + rainbowIconPad);
+        const iconY = 16;
+        const centerX = iconX + rainbowIconSize / 2;
+        const centerY = iconY + rainbowIconSize / 2;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(this.render_cache.health_img, -rainbowIconSize / 2, -rainbowIconSize / 2, rainbowIconSize, rainbowIconSize);
+        ctx.restore();
+    }
+
     for (let index = 0; index < state.playerLives; index++) {
         ctx.drawImage(this.render_cache.player_img, sc.max_x - (index + 1) * (lifeIconSize + lifeIconPad), 14, lifeIconSize, lifeIconSize);
     }
@@ -167,6 +252,14 @@ window.GameRenderingModules.renderGameplay = function (state) {
 
     ctx.fillStyle = healthBarColor;
     ctx.fillRect(0, 0, Math.max(0, Math.floor(sc.max_x * healthPct)), 10);
+
+    if (state.stageAdvanceScore > 0) {
+        const progressPct = Math.min(1, Math.max(0, state.score / state.stageAdvanceScore));
+        ctx.fillStyle = '#222255';
+        ctx.fillRect(0, 10, sc.max_x, 4);
+        ctx.fillStyle = '#6666ff';
+        ctx.fillRect(0, 10, Math.floor(sc.max_x * progressPct), 4);
+    }
 
     ctx.fillStyle = this.config.scoreColour;
     ctx.font = 'bold 12px monospace';
@@ -191,7 +284,7 @@ window.GameRenderingModules.renderGameplay = function (state) {
         ctx.textAlign = 'left';
     }
 
-    if (state.phase === 'life_lost') {
+    if (state.phase === 'life_lost' && !state.playerDeathTimer && !Object.keys(state.entities.playerDeathParticles || {}).length) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         ctx.fillRect(0, 0, sc.max_x, sc.max_y);
         ctx.textAlign = 'center';

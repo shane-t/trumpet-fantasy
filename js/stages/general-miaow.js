@@ -22,5 +22,5 @@ window.GameStageRegistry.push({
     enemyMissileDamage: 8,
     enemyCollisionDamage: 14,
     enemyMissileColor: '#ff33cc',
-    pointsToAdvance: 140
+    pointsToAdvance: 350
 });

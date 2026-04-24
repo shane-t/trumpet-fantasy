@@ -43,11 +43,15 @@ const Game = {
         this.state.collisions = 0;
         this.state.playerLives = 3;
         this.state.lifeLostTimer = 0;
+        this.state.playerDeathTimer = 0;
+        this.state.playerDeathFlashTimer = 0;
+        this.state.deathReturnsToMenu = false;
         this.state.stageCompleteTimer = 0;
         this.state.selectedMenuIndex = 0;
         this.state.lastRevealedSecret = '';
         this.state.lastRevealedStageName = '';
         this.state.collectedSecrets = {};
+        this.state.rainbowBlastsAvailable = 1;
         this.state.transitionStars = null;
         this.state.entities.missiles = {};
         this.state.entities.enemyMissiles = {};
@@ -55,6 +59,9 @@ const Game = {
         this.state.entities.powerups = {};
         this.state.entities.floatingNumbers = {};
         this.state.entities.explosionParticles = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.stageEndExplosionParticles = {};
+        this.state.entities.rainbowBlasts = {};
         this.state.entities.player = new Player(this.state.stateCanvas);
         this.state.backgroundThings = BackgroundThings.create(
             250,
@@ -70,6 +77,10 @@ const Game = {
     },
 
     damagePlayer: function (amount) {
+        if (this.state.phase !== 'playing') {
+            return;
+        }
+
         const now = Date.now();
         if (now - this.state.lastPlayerHitAt < this.config.playerHitCooldownMs) {
             return;
@@ -79,12 +90,50 @@ const Game = {
         Sound.player_hit();
         if (this.state.playerHealth <= 0) {
             this.state.playerLives--;
-            if (this.state.playerLives <= 0) {
-                this.returnToStageSelectAfterDefeat();
-            } else {
-                this.restartStage();
-            }
+            this.startPlayerDeathSequence(this.state.playerLives <= 0);
         }
+    },
+
+    startPlayerDeathSequence(returnToMenu) {
+        this.state.phase = 'player_death';
+        this.state.lifeLostTimer = 0;
+        this.state.playerDeathTimer = 108;
+        this.state.playerDeathFlashTimer = 24;
+        this.state.deathReturnsToMenu = !!returnToMenu;
+        this.state.hyperspace = false;
+        this.state.lastPlayerHitAt = 0;
+        this.state.lastPlayerShotAt = 0;
+        this.state.entities.missiles = {};
+        this.state.entities.enemyMissiles = {};
+        this.state.entities.powerups = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.rainbowBlasts = {};
+    },
+
+    activateRainbowBlast() {
+        if (this.state.phase !== 'playing' || this.state.paused) {
+            return;
+        }
+
+        if (this.state.rainbowBlastsAvailable <= 0) {
+            return;
+        }
+
+        const player = this.state.entities.player;
+        if (!player || !this.state.stateCanvas) {
+            return;
+        }
+
+        const blast = new RainbowBlast(
+            player.pos_x() + player.width / 2,
+            player.pos_y() + player.height / 2,
+            this.state.stateCanvas,
+            200
+        );
+
+        this.state.entities.rainbowBlasts[blast.id] = blast;
+        this.state.rainbowBlastsAvailable--;
+        Sound.rainbow_blast();
     },
 
     damage_player: function (amount) {
@@ -97,6 +146,9 @@ const Game = {
         this.state.playerHealth = 100;
         this.state.playerLives = 3;
         this.state.lifeLostTimer = 0;
+        this.state.playerDeathTimer = 0;
+        this.state.playerDeathFlashTimer = 0;
+        this.state.deathReturnsToMenu = false;
         this.state.lastPlayerHitAt = 0;
         this.state.lastPlayerShotAt = 0;
         this.state.hyperspace = false;
@@ -104,6 +156,7 @@ const Game = {
         this.state.transitionStars = null;
         this.state.stageMessageTimer = 0;
         this.state.stageCompleteTimer = 0;
+        this.state.rainbowBlastsAvailable = 0;
         this.state.phase = 'stage_select';
         this.state.entities.missiles = {};
         this.state.entities.enemyMissiles = {};
@@ -111,6 +164,9 @@ const Game = {
         this.state.entities.powerups = {};
         this.state.entities.floatingNumbers = {};
         this.state.entities.explosionParticles = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.stageEndExplosionParticles = {};
+        this.state.entities.rainbowBlasts = {};
         this.state.entities.player = new Player(this.state.stateCanvas);
         this.state.backgroundThings = BackgroundThings.create(250, this.state.stateCanvas, 'particle', 'star');
         this.ensureStageSelectSelection();
@@ -121,17 +177,28 @@ const Game = {
         return this.returnToStageSelectAfterDefeat();
     },
 
-    restartStage() {
+    restartStage(showLifeLostOverlay = false) {
         this.state.playerHealth = 100;
         this.state.lastPlayerHitAt = 0;
         this.state.lastPlayerShotAt = 0;
+        this.state.playerDeathTimer = 0;
+        this.state.playerDeathFlashTimer = 0;
+        this.state.deathReturnsToMenu = false;
         this.state.entities.enemies = {};
         this.state.entities.enemyMissiles = {};
         this.state.entities.missiles = {};
         this.state.entities.powerups = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.stageEndExplosionParticles = {};
+        this.state.entities.rainbowBlasts = {};
         this.state.entities.player = new Player(this.state.stateCanvas);
-        this.state.phase = 'life_lost';
-        this.state.lifeLostTimer = 160;
+        if (showLifeLostOverlay) {
+            this.state.phase = 'life_lost';
+            this.state.lifeLostTimer = 160;
+        } else {
+            this.state.phase = 'playing';
+            this.state.lifeLostTimer = 0;
+        }
     },
 
     restart_stage() {
@@ -175,10 +242,14 @@ const Game = {
         this.state.playerHealth = 100;
         this.state.playerLives = 3;
         this.state.lifeLostTimer = 0;
+        this.state.playerDeathTimer = 0;
+        this.state.playerDeathFlashTimer = 0;
+        this.state.deathReturnsToMenu = false;
         this.state.lastPlayerHitAt = 0;
         this.state.lastPlayerShotAt = 0;
         this.state.collisions = 0;
         this.state.hyperspace = false;
+        this.state.rainbowBlastsAvailable = 0;
         this.state.transitionStars = BackgroundThings.create(280, sc, 'particle', 'star');
         this.state.entities.missiles = {};
         this.state.entities.enemyMissiles = {};
@@ -186,6 +257,9 @@ const Game = {
         this.state.entities.powerups = {};
         this.state.entities.floatingNumbers = {};
         this.state.entities.explosionParticles = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.stageEndExplosionParticles = {};
+        this.state.entities.rainbowBlasts = {};
         this.state.entities.player = new Player(sc);
         this.state.backgroundThings = BackgroundThings.create(
             stage_cfg.backgroundThingCount,
@@ -203,18 +277,31 @@ const Game = {
         const stage_cfg = this.config.stages[this.state.stage];
         if (!stage_cfg) return;
 
+        const stageEndParticles = {};
+        for (const enemyId in this.state.entities.enemies) {
+            const enemy = this.state.entities.enemies[enemyId];
+            if (!enemy) continue;
+            const burst = SlowExplosion(enemy.pos_x() + enemy.width / 2, enemy.pos_y() + enemy.height / 2, 5, 60);
+            for (const particleId in burst) {
+                stageEndParticles[particleId] = burst[particleId];
+            }
+        }
+
         this.state.collectedSecrets[this.state.stage] = true;
         this.state.lastRevealedSecret = stage_cfg.secret || '';
         this.state.lastRevealedStageName = stage_cfg.name;
         this.state.phase = 'stage_complete';
         this.state.stageCompleteTimer = 220;
         this.state.transitionStars = BackgroundThings.create(280, this.state.stateCanvas, 'particle', 'star');
+        this.state.entities.stageEndExplosionParticles = stageEndParticles;
         this.state.entities.enemies = {};
         this.state.entities.enemyMissiles = {};
         this.state.entities.missiles = {};
         this.state.entities.powerups = {};
         this.state.entities.floatingNumbers = {};
         this.state.entities.explosionParticles = {};
+        this.state.entities.playerDeathParticles = {};
+        this.state.entities.rainbowBlasts = {};
         Sound.stage_up();
     },
 
@@ -408,6 +495,7 @@ const Game = {
         lastRevealedSecret: '',
         lastRevealedStageName: '',
         collectedSecrets: {},
+        rainbowBlastsAvailable: 0,
 
         entities: {
             player: null,
@@ -416,10 +504,16 @@ const Game = {
             enemies: {},
             powerups: {},
             floatingNumbers: {},
-            explosionParticles: {}
+            explosionParticles: {},
+            playerDeathParticles: {},
+            stageEndExplosionParticles: {},
+            rainbowBlasts: {}
         },
         backgroundThings: null,
-        stateCanvas: null
+        stateCanvas: null,
+        playerDeathTimer: 0,
+        playerDeathFlashTimer: 0,
+        deathReturnsToMenu: false
     },
     
     pause: function () {
@@ -430,7 +524,13 @@ const Game = {
         const stage_cfg = this.config.stages[this.state.stage];
         if (!stage_cfg) return false;
 
-        const spawn_rate = stage_cfg.enemySpawnRate || 0;
+        let spawn_rate = stage_cfg.enemySpawnRate || 0;
+        let difficultyRatio = 0;
+        if (this.state.stageAdvanceScore > 0) {
+            difficultyRatio = this.state.score / this.state.stageAdvanceScore;
+        }
+        spawn_rate = spawn_rate * (1 + (difficultyRatio * 1.5));
+
         if (Math.random() >= spawn_rate) return false;
 
         const min_speed = stage_cfg.enemySpeedMin || 1;
@@ -447,7 +547,7 @@ const Game = {
             stage_cfg.enemyMaxHealth || 100,
             stage_cfg.enemyTrackingChance || 0.1,
             !!stage_cfg.enemyShowHealthBar,
-            stage_cfg.enemyFireRate || 0.02,
+            (stage_cfg.enemyFireRate || 0.02) * (1 + (difficultyRatio * 1.5)),
             stage_cfg.enemyMissileDamage || 10,
             stage_cfg.enemyCollisionDamage || 25
         );
@@ -463,6 +563,10 @@ const Game = {
 
     createPowerupMaybe() {
         return this.create_powerup_maybe();
+    },
+
+    createRainbowPowerupMaybe() {
+        return Math.random() < 0.003;
     },
 
     collide: function (a, b) {
@@ -584,6 +688,47 @@ function Explosion(start_x, start_y, speed, number) {
     return particles;
 }
 
+function SlowExplosion(start_x, start_y, speed, number) {
+    const particles = {};
+    const total = number || 60;
+    const base = Date.now();
+
+    for (let i = 0; i < total; i++) {
+        const particle = new SlowExplosionParticle(start_x, start_y, speed, Math.random() * Math.PI * 2);
+        particles[base + i + Math.floor(Math.random() * 10000)] = particle;
+    }
+
+    return particles;
+}
+
+class SlowExplosionParticle {
+    constructor(start_x, start_y, speed, angle) {
+        this._x = start_x;
+        this._y = start_y;
+        this.speed = speed * 0.55;
+        this.angle = angle;
+        this.width = 2;
+        this.height = 2;
+        this.life = 140 + Math.floor(Math.random() * 60);
+    }
+
+    pos_x() {
+        return Math.floor(this._x);
+    }
+
+    pos_y() {
+        return Math.floor(this._y);
+    }
+
+    move() {
+        this._x += this.speed * Math.cos(this.angle);
+        this._y += this.speed * Math.sin(this.angle);
+        this.speed *= 0.976;
+        this.life--;
+        return this;
+    }
+}
+
 class ExplosionParticle {
     constructor(start_x, start_y, speed, angle) {
         this._x = start_x;
@@ -614,6 +759,51 @@ class ExplosionParticle {
     }
 }
 
+function PlayerDeathBurst(start_x, start_y, count, damage) {
+    const particles = {};
+    const total = count || 1600;
+    const base = Date.now();
+
+    for (let index = 0; index < total; index++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.5 + Math.random() * 4.8;
+        const particle = new PlayerDeathParticle(start_x, start_y, speed, angle, damage);
+        particles[base + index + Math.floor(Math.random() * 1000)] = particle;
+    }
+
+    return particles;
+}
+
+class PlayerDeathParticle {
+    constructor(start_x, start_y, speed, angle, damage) {
+        this._x = start_x;
+        this._y = start_y;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.life = 55 + Math.floor(Math.random() * 35);
+        this.damage = damage || 20;
+        this.width = 1;
+        this.height = 1;
+    }
+
+    pos_x() {
+        return Math.floor(this._x);
+    }
+
+    pos_y() {
+        return Math.floor(this._y);
+    }
+
+    move() {
+        this._x += this.vx;
+        this._y += this.vy;
+        this.vx *= 0.992;
+        this.vy *= 0.992;
+        this.life--;
+        return this;
+    }
+}
+
 class Enemy {
     constructor(start_x, start_y, speed, type, pointsKill, pointsDamage, maxHealth, trackingChance, showHealthBar, fireRate, missileDamage, collisionDamage) {
         this._x = start_x;
@@ -636,6 +826,10 @@ class Enemy {
         this.direction = 0;
         this.yVelocity = 0;
         this.currentSpeed = this.speed;
+        this.lockStrength = 0;
+        this.wavePhase = Math.random() * Math.PI * 2;
+        this.waveAmplitude = 1.5 + Math.random() * 2.0;
+        this.waveSpeed = 0.05 + Math.random() * 0.05;
     }
 
     pos_x() {
@@ -650,15 +844,15 @@ class Enemy {
         if (this.type === 'spoon') {
             const targetY = typeof player_y === 'number' ? player_y : this._y;
             const deltaY = targetY - this._y;
-            const yAccel = Math.sign(deltaY) * 0.45;
+            const yAccel = Math.sign(deltaY) * 0.40;
             this.yVelocity += yAccel;
-            this.yVelocity *= 0.82;
-            this.yVelocity = Math.max(-3.4, Math.min(3.4, this.yVelocity));
+            this.yVelocity *= 0.80;
+            this.yVelocity = Math.max(-2.6, Math.min(2.6, this.yVelocity));
             this._y += this.yVelocity;
 
             const alignedForDash = Math.abs(deltaY) < 14;
             if (alignedForDash) {
-                this.currentSpeed = Math.min(this.speed * 4.6, this.currentSpeed + 0.42);
+                this.currentSpeed = Math.min(this.speed * 3.5, this.currentSpeed + 0.35);
             } else {
                 this.currentSpeed = Math.max(this.speed, this.currentSpeed - 0.22);
             }
@@ -671,26 +865,59 @@ class Enemy {
             this._x -= this.speed;
             if (typeof player_y === 'number') {
                 const delta = player_y - this._y;
-                const trackingForce = this.type === 'triangle' ? 0.36 : 0.3;
-                const maxVerticalSpeed = this.type === 'triangle' ? 2.8 : 2.2;
-                const steering = Math.sign(delta) * trackingForce;
+                const shouldTrack = Math.random() < this.trackingChance;
+                if (shouldTrack) {
+                    this.lockStrength = Math.min(1, this.lockStrength + 0.18);
+                } else {
+                    this.lockStrength = Math.max(0, this.lockStrength - 0.25);
+                }
+
+                const nearFactor = Math.min(1, Math.abs(delta) / 40);
+                const baseTrackingForce = this.type === 'triangle' ? 0.34 : 0.28;
+                const trackingForce = baseTrackingForce * this.lockStrength * nearFactor;
+                let steering = 0;
+
+                if (trackingForce > 0) {
+                    steering = Math.sign(delta) * trackingForce;
+                } else {
+                    steering = (Math.random() - 0.5) * 0.2;
+                }
+
                 this.yVelocity += steering;
-                this.yVelocity *= 0.86;
+                const damping = 0.82 + (1 - this.lockStrength) * 0.08;
+                this.yVelocity *= damping;
+
+                const baseMaxVerticalSpeed = this.type === 'triangle' ? 2.6 : 2.2;
+                const maxVerticalSpeed = baseMaxVerticalSpeed * (0.72 + 0.28 * this.lockStrength);
                 this.yVelocity = Math.max(-maxVerticalSpeed, Math.min(maxVerticalSpeed, this.yVelocity));
                 this._y += this.yVelocity;
+                if (!shouldTrack && Math.abs(delta) < 16) {
+                    this._y += (Math.random() - 0.5) * 1.4;
+                }
             }
             return this._x;
         }
 
-        this._x -= this.speed;
+        let currentHorizontalSpeed = this.speed;
 
-        if (typeof player_y === 'number' && Math.random() < this.trackingChance) {
-            const delta = player_y - this._y;
-            const step = Math.sign(delta) * Math.min(3, Math.abs(delta));
-            this._y += step;
-            this.lastMove = step;
-            return this._x;
+        if (typeof player_y === 'number') {
+            const deltaY = player_y - this._y;
+            if (Math.abs(deltaY) < 25) {
+                currentHorizontalSpeed = this.speed * 2.5; 
+            }
+            
+            if (Math.random() < this.trackingChance) {
+                const step = Math.sign(deltaY) * Math.min(3, Math.abs(deltaY));
+                this._y += step;
+                this.lastMove = step;
+            }
         }
+        
+        this._x -= currentHorizontalSpeed;
+        this.wavePhase += this.waveSpeed;
+        this._y += Math.sin(this.wavePhase) * this.waveAmplitude;
+
+        return this._x;
 
         let decision = Math.random();
         if (decision < 0.33) {
@@ -729,8 +956,14 @@ class Enemy {
             return false;
         }
         if (Math.random() < this.fireRate) {
-            return new Missile(this._x + this.width, this._y + this.height / 2, -16, this.missileDamage);
+            let difficultyRatio = 0;
+            if (Game.state.stageAdvanceScore > 0) {
+                difficultyRatio = Game.state.score / Game.state.stageAdvanceScore;
+            }
+            const speed = -16 - (difficultyRatio * 8);
+            return new Missile(this._x + this.width, this._y + this.height / 2, speed, this.missileDamage);
         }
+        return false;
         return false;
     }
 }
@@ -803,6 +1036,7 @@ class HealthPowerup {
         this.width = 20;
         this.height = 20;
         this.speed = 2;
+        this.type = 'health';
         this.id = Date.now() + Math.floor(Math.random() * 1000);
     }
 
@@ -817,6 +1051,32 @@ class HealthPowerup {
     move() {
         this._x -= this.speed;
         return this._x;
+    }
+}
+
+class RainbowPowerup extends HealthPowerup {
+    constructor(start_x, start_y) {
+        super(start_x, start_y);
+        this.type = 'rainbow';
+    }
+}
+
+class RainbowBlast {
+    constructor(originX, originY, stateCanvas, damage) {
+        this.x = originX;
+        this.y = originY;
+        this.radius = 2;
+        this.thickness = 12;
+        this.speed = 18;
+        this.damage = damage || 200;
+        this.id = Date.now() + Math.floor(Math.random() * 1000);
+        this.maxRadius = Math.ceil(Math.sqrt(stateCanvas.max_x * stateCanvas.max_x + stateCanvas.max_y * stateCanvas.max_y));
+        this.hitEnemyIds = {};
+    }
+
+    expand() {
+        this.radius += this.speed;
+        return this.radius;
     }
 }
 
@@ -897,6 +1157,15 @@ const Sound = {
         [440, 330, 220, 165, 110].forEach((freq, idx) => {
             setTimeout(() => { this._fm(freq, freq * 0.25, 3, 0.38, 0.25); }, idx * 200);
         });
+    },
+
+    rainbow_blast() {
+        [220, 330, 440, 660, 880, 1100, 1320].forEach((freq, idx) => {
+            setTimeout(() => { this._fm(freq, freq * 1.35, 5.5, 0.34, 0.32); }, idx * 70);
+        });
+        [150, 120, 90].forEach((freq, idx) => {
+            setTimeout(() => { this._fm(freq, freq * 0.5, 10, 0.55, 0.2); }, idx * 120);
+        });
     }
 };
 
@@ -914,7 +1183,9 @@ const Key = {
     ARROW_RIGHT: 39,
     ARROW_DOWN: 40,
   SHOOT:32, //space
+        RAINBOW:74, //j
     PAUSE:80, //p
+    AUTOPLAY:73, //i
   
     isDown(keyCode) {
     return this._pressed[keyCode];
@@ -952,6 +1223,19 @@ document.addEventListener('keydown', (ev) => {
 
         if (ev.which === Key.PAUSE && Game.state.phase === 'playing') {
             Game.pause();
+        }
+
+        if (ev.which === Key.RAINBOW && Game.state.phase === 'playing') {
+            Game.activateRainbowBlast();
+        }
+
+        if (ev.which === Key.AUTOPLAY) {
+            Game.state.autoplay = !Game.state.autoplay;
+            if (Game.state.autoplay) {
+                console.log(JSON.stringify({ event: 'AUTOPLAY_ENABLED' }));
+            } else {
+                console.log(JSON.stringify({ event: 'AUTOPLAY_DISABLED' }));
+            }
         }
     }
 

@@ -28,10 +28,10 @@ window.GameScreens.renderStageSelect = function (state) {
     ctx.textAlign = 'left';
     ctx.font = 'bold 48px monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('THE ULTIMATE COMMENT', leftX, 74);
+    ctx.fillText('the ultimate comment', leftX, 74);
     ctx.font = 'bold 18px monospace';
     ctx.fillStyle = '#ffff00';
-    ctx.fillText('STAGE SELECT', leftX, 106);
+    ctx.fillText('discover the secret of the universe', leftX, 106);
 
     ctx.font = 'bold 13px monospace';
     ctx.fillStyle = '#ffffff';
@@ -39,16 +39,18 @@ window.GameScreens.renderStageSelect = function (state) {
     ctx.fillText('SELECT: SPACE or ENTER', leftX, 172);
     ctx.fillText('IN-GAME MOVE: WASD or ARROWS', leftX, 194);
     ctx.fillText('IN-GAME SHOOT: SPACE', leftX, 216);
-    ctx.fillText('CURRENT SCORE: ' + state.score, leftX, 238);
+    ctx.fillText('RAINBOW BLAST: J', leftX, 238);
+    ctx.fillText('CURRENT SCORE: ' + state.score, leftX, 260);
 
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = '#99aabb';
-    ctx.fillText('Complete a stage to reveal', leftX, 274);
+    ctx.fillText('destroy a god to reveal', leftX, 274);
     ctx.fillText('its secret in the list.', leftX, 292);
+    ctx.fillText('then discover the secret of the universe.', leftX, 318);
 
     ctx.font = 'bold 16px monospace';
     ctx.fillStyle = '#ffffaa';
-    ctx.fillText('STAGES / SECRETS', rightX, 130);
+    ctx.fillText('gods:', rightX, 130);
 
     for (let i = 0; i < options.length; i++) {
         const opt = options[i];

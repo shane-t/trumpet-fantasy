@@ -15,7 +15,7 @@ window.GameStageRegistry.push({
     enemySpeedRange: 1,
     enemyPointsKill: 18,
     enemyPointsDamage: 3,
-    enemyMaxHealth: 260,
+    enemyMaxHealth: 60,
     enemyTrackingChance: 0.7,
     enemyShowHealthBar: true,
     enemyFireRate: 0,
